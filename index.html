@@ -1,0 +1,775 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b7cbb">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>MVM783 Grandview — Punch List</title>
+</head>
+<body>
+<style>
+  :root {
+    --bg: #eef1f5; --surface: #ffffff; --surface-2: #f6f8fb; --line: #dbe1ea; --line-strong: #c3ccd9;
+    --ink: #16202c; --ink-2: #556273; --ink-soft: #5b6878; --accent: #0b7cbb; --accent-ink: #ffffff;
+    --good: #1f9d57; --good-soft: #e5f4ec; --warn: #c07d13; --warn-soft: #f8efdc;
+    --flag: #c73f63; --flag-soft: #fae8ee; --untouched: #b7c0cd;
+    --shadow: 0 1px 2px rgba(20,32,44,.06), 0 4px 14px rgba(20,32,44,.05);
+    --radius: 14px; --tap: 58px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0e1620; --surface: #18232f; --surface-2: #131d27; --line: #263444; --line-strong: #33465a;
+      --ink: #e7eef6; --ink-2: #aab6c4; --ink-soft: #8695a6; --accent: #34b3f4; --accent-ink: #06131e;
+      --good: #3fbd76; --good-soft: #12312270; --warn: #d99f37; --warn-soft: #33280f70;
+      --flag: #e56a89; --flag-soft: #3a172270; --untouched: #40505f;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 6px 18px rgba(0,0,0,.28);
+    }
+  }
+  :root[data-theme="light"] {
+    --bg: #eef1f5; --surface: #ffffff; --surface-2: #f6f8fb; --line: #dbe1ea; --line-strong: #c3ccd9;
+    --ink: #16202c; --ink-2: #556273; --ink-soft: #5b6878; --accent: #0b7cbb; --accent-ink: #ffffff;
+    --good: #1f9d57; --good-soft: #e5f4ec; --warn: #c07d13; --warn-soft: #f8efdc;
+    --flag: #c73f63; --flag-soft: #fae8ee; --untouched: #b7c0cd;
+    --shadow: 0 1px 2px rgba(20,32,44,.06), 0 4px 14px rgba(20,32,44,.05);
+  }
+  :root[data-theme="dark"] {
+    --bg: #0e1620; --surface: #18232f; --surface-2: #131d27; --line: #263444; --line-strong: #33465a;
+    --ink: #e7eef6; --ink-2: #aab6c4; --ink-soft: #8695a6; --accent: #34b3f4; --accent-ink: #06131e;
+    --good: #3fbd76; --good-soft: #12312270; --warn: #d99f37; --warn-soft: #33280f70;
+    --flag: #e56a89; --flag-soft: #3a172270; --untouched: #40505f;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 6px 18px rgba(0,0,0,.28);
+  }
+
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  .app {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg); color: var(--ink); min-height: 100vh; -webkit-font-smoothing: antialiased;
+    padding-bottom: 96px; font-size: 16px;
+  }
+  .mono { font-family: ui-monospace, "SF Mono", "Menlo", "Consolas", monospace; font-variant-numeric: tabular-nums; }
+
+  header.bar {
+    position: sticky; top: 0; z-index: 40;
+    background: color-mix(in srgb, var(--surface) 92%, transparent);
+    backdrop-filter: saturate(1.4) blur(10px); border-bottom: 1px solid var(--line);
+  }
+  .bar-inner { max-width: 680px; margin: 0 auto; padding: 10px 14px 12px; }
+  .titlerow { display: flex; align-items: center; gap: 10px; }
+  .titlerow h1 { font-size: 18px; font-weight: 700; margin: 0; letter-spacing: -.01em; flex: 1; min-width: 0; }
+  .titlerow h1 .prop { display:block; font-size: 12px; font-weight: 600; color: var(--ink-soft); text-transform: uppercase; letter-spacing: .08em; margin-top: 2px; }
+  .iconbtn {
+    appearance: none; border: 1px solid var(--line-strong); background: var(--surface-2);
+    color: var(--ink-2); width: 38px; height: 38px; border-radius: 10px; font-size: 17px;
+    display: grid; place-items: center; cursor: pointer; flex: none;
+  }
+  .iconbtn:active { transform: scale(.94); }
+
+  .progress-wrap { margin-top: 11px; }
+  .progress-top { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 6px; }
+  .progress-top .count { font-size: 14px; color: var(--ink-2); font-weight: 600; }
+  .progress-top .count b { color: var(--ink); font-size: 16px; }
+  .progress-top .saved { font-size: 11px; color: var(--ink-soft); display: flex; align-items: center; gap: 5px; }
+  .savedot { width: 7px; height: 7px; border-radius: 50%; background: var(--good); }
+  .savedot.saving { background: var(--warn); }
+  .savedot.err { background: var(--flag); }
+  .track { height: 8px; border-radius: 6px; background: var(--line); overflow: hidden; }
+  .track > i { display: block; height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 60%, var(--good))); transition: width .3s ease; }
+
+  .tools { display: flex; gap: 8px; margin-top: 11px; }
+  .search { flex: 1; position: relative; }
+  .search input {
+    width: 100%; height: 46px; border-radius: 11px; border: 1px solid var(--line-strong);
+    background: var(--surface-2); color: var(--ink); padding: 0 12px 0 38px; font-size: 16.5px;
+  }
+  .search::before { content: "⌕"; position: absolute; left: 11px; top: 50%; transform: translateY(-52%); font-size: 19px; color: var(--ink-soft); }
+  .seg { display: flex; background: var(--surface-2); border: 1px solid var(--line-strong); border-radius: 11px; padding: 3px; flex: none; }
+  .seg button {
+    appearance: none; border: 0; background: transparent; color: var(--ink-2);
+    font-size: 13px; font-weight: 600; padding: 0 12px; height: 34px; border-radius: 8px; cursor: pointer; white-space: nowrap;
+  }
+  .seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+
+  main { max-width: 680px; margin: 0 auto; padding: 12px 12px 0; }
+
+  .floor { margin-bottom: 12px; }
+  .floor-head {
+    position: sticky; top: 0; z-index: 5;
+    display: flex; align-items: center; gap: 10px; width: 100%;
+    appearance: none; border: 1px solid var(--line); border-radius: 12px;
+    background: var(--surface); color: var(--ink); padding: 14px 15px; cursor: pointer;
+    box-shadow: var(--shadow); text-align: left;
+  }
+  .floor-head .chev { font-size: 13px; color: var(--ink-soft); transition: transform .18s ease; }
+  .floor.collapsed .chev { transform: rotate(-90deg); }
+  .floor-head .fname { font-weight: 700; font-size: 17px; flex: 1; }
+  .floor-head .fmeta { font-size: 13px; color: var(--ink-soft); font-weight: 600; }
+  .floor-head .fbar { width: 46px; height: 6px; border-radius: 4px; background: var(--line); overflow: hidden; }
+  .floor-head .fbar > i { display: block; height: 100%; background: var(--good); width: 0%; }
+  .floor-body { display: flex; flex-direction: column; gap: 9px; padding-top: 9px; }
+  .floor.collapsed .floor-body { display: none; }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+    box-shadow: var(--shadow); overflow: hidden; position: relative;
+  }
+  .card::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: var(--untouched); }
+  .card[data-status="partial"]::before { background: var(--warn); }
+  .card[data-status="done"]::before { background: var(--good); }
+
+  .card-head { display: flex; align-items: center; gap: 12px; padding: 12px 14px 12px 16px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  .card-head .chev { font-size: 13px; color: var(--ink-soft); flex: none; transition: transform .18s ease; }
+  .card.collapsed .chev { transform: rotate(-90deg); }
+  .card.collapsed .checks { display: none; }
+  .room-no { font-size: 24px; font-weight: 700; letter-spacing: -.02em; }
+  .guest { flex: 1; min-width: 0; }
+  .guest .lbl { font-size: 11px; text-transform: uppercase; letter-spacing: .09em; color: var(--ink-soft); font-weight: 700; }
+  .guest .name { font-size: 16.5px; font-weight: 600; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .guest .name.empty { color: var(--ink-soft); font-weight: 500; font-style: italic; }
+  .badge { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; padding: 4px 8px; border-radius: 999px; flex: none; }
+  .badge.done { background: var(--good-soft); color: var(--good); }
+  .badge.flag { background: var(--flag-soft); color: var(--flag); }
+
+  .checks { border-top: 1px solid var(--line); }
+  .check {
+    display: flex; align-items: center; gap: 12px; padding: 0 14px; min-height: var(--tap);
+    cursor: pointer; -webkit-tap-highlight-color: transparent; user-select: none; border-top: 1px solid var(--line);
+  }
+  .checks > .check:first-child { border-top: 0; }
+  .check input { position: absolute; opacity: 0; pointer-events: none; }
+  .box {
+    width: 29px; height: 29px; border-radius: 8px; border: 2px solid var(--line-strong);
+    background: var(--surface-2); flex: none; display: grid; place-items: center;
+    color: transparent; font-size: 17px; font-weight: 800; transition: all .12s ease;
+  }
+  .check input:checked + .box { background: var(--good); border-color: var(--good); color: #fff; }
+  .check .ctext { font-size: 16.5px; font-weight: 500; flex: 1; }
+  .check .ctext small { display: block; font-size: 12px; color: var(--ink-soft); font-weight: 500; margin-top: 2px; }
+
+  .check.tv { display: flex; align-items: center; padding-right: 10px; }
+  .check.tv .hit { display: flex; align-items: center; gap: 12px; flex: 1; min-height: var(--tap); cursor: pointer; }
+  .check.tv .hit .ctext { font-weight: 600; }
+  .differs {
+    appearance: none; border: 1px solid var(--line-strong); background: var(--surface-2);
+    color: var(--ink-soft); font-size: 13px; font-weight: 700; height: 36px; padding: 0 13px;
+    border-radius: 9px; cursor: pointer; white-space: nowrap; flex: none;
+  }
+  .check.tv.show-name .differs { background: var(--flag-soft); border-color: var(--flag); color: var(--flag); }
+  .check.tv:has(input:checked) .differs { display: none; }
+
+  .mismatch { padding: 2px 14px 12px 52px; display: none; }
+  .check.tv.show-name + .mismatch { display: block; }
+  .mismatch label { display: block; font-size: 11px; font-weight: 700; color: var(--flag); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 5px; }
+  .mismatch input {
+    width: 100%; height: 48px; border-radius: 10px; border: 1.5px solid var(--flag);
+    background: var(--flag-soft); color: var(--ink); padding: 0 12px; font-size: 16.5px; font-weight: 600;
+  }
+  .mismatch input::placeholder { color: var(--ink-soft); font-weight: 400; }
+
+  footer.bar {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
+    background: color-mix(in srgb, var(--surface) 94%, transparent);
+    backdrop-filter: saturate(1.4) blur(10px); border-top: 1px solid var(--line);
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+  }
+  .footer-inner { max-width: 680px; margin: 0 auto; display: flex; gap: 8px; }
+  .fbtn {
+    appearance: none; flex: 1; height: 50px; border-radius: 12px; border: 1px solid var(--line-strong);
+    background: var(--surface); color: var(--ink); font-size: 15px; font-weight: 700; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 7px;
+  }
+  .fbtn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .fbtn:active { transform: scale(.97); }
+
+  .scrim { position: fixed; inset: 0; background: rgba(6,12,20,.5); z-index: 50; display: none; }
+  .scrim.open { display: block; }
+  .sheet {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 51; transform: translateY(100%);
+    transition: transform .26s cubic-bezier(.2,.8,.2,1);
+    background: var(--surface); border-radius: 18px 18px 0 0; border-top: 1px solid var(--line);
+    max-width: 680px; margin: 0 auto; max-height: 88vh; display: flex; flex-direction: column;
+  }
+  .sheet.open { transform: translateY(0); }
+  .sheet-head { display: flex; align-items: center; gap: 10px; padding: 16px 16px 10px; border-bottom: 1px solid var(--line); }
+  .sheet-head h2 { margin: 0; font-size: 17px; flex: 1; }
+  .sheet-body { padding: 16px; overflow-y: auto; }
+  .sheet p.hint { margin: 0 0 12px; font-size: 13px; color: var(--ink-2); line-height: 1.5; }
+  .sheet textarea {
+    width: 100%; min-height: 190px; border-radius: 12px; border: 1px solid var(--line-strong);
+    background: var(--surface-2); color: var(--ink); padding: 12px; font-size: 13px; resize: vertical;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; line-height: 1.5;
+  }
+  .sheet-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+  .sheet-actions .fbtn { flex: 1 1 40%; }
+  .msg { font-size: 13px; font-weight: 600; margin-top: 10px; min-height: 18px; }
+  .msg.ok { color: var(--good); }
+  .msg.bad { color: var(--flag); }
+  .danger { color: var(--flag); border-color: var(--flag) !important; }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="app">
+  <header class="bar">
+    <div class="bar-inner">
+      <div class="titlerow">
+        <h1 id="title">Relabel &amp; Firmware Punch List<span class="prop mono" id="propName">Tap ⚙ to name property</span></h1>
+        <button class="iconbtn" id="themeBtn" title="Toggle light/dark" aria-label="Toggle theme">◐</button>
+        <button class="iconbtn" id="cfgBtn" title="Settings" aria-label="Settings">⚙</button>
+      </div>
+      <div class="progress-wrap">
+        <div class="progress-top">
+          <span class="count"><b id="doneN">0</b> / <span id="totalN">0</span> units complete</span>
+          <span class="saved"><span class="savedot" id="saveDot"></span><span id="savedTxt">Saved</span></span>
+        </div>
+        <div class="track"><i id="trackFill"></i></div>
+      </div>
+      <div class="tools">
+        <div class="search"><input id="search" type="search" inputmode="search" placeholder="Find room or guest…" autocomplete="off"></div>
+        <div class="seg" role="group" aria-label="Filter">
+          <button id="fInc" aria-pressed="true">To do</button>
+          <button id="fAll" aria-pressed="false">All</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main id="list"></main>
+
+  <footer class="bar">
+    <div class="footer-inner">
+      <button class="fbtn" id="rosterBtn">👤 Guest list</button>
+      <button class="fbtn" id="nextBtn">↓ Next to do</button>
+      <button class="fbtn primary" id="exportBtn">⇪ Export</button>
+    </div>
+  </footer>
+
+  <div class="scrim" id="rosterScrim"></div>
+  <div class="sheet" id="rosterSheet" role="dialog" aria-modal="true" aria-labelledby="rosterTitle">
+    <div class="sheet-head">
+      <h2 id="rosterTitle">Load today's guest list</h2>
+      <button class="iconbtn" data-close="roster" aria-label="Close">✕</button>
+    </div>
+    <div class="sheet-body">
+      <p class="hint">Paste today's guest names as JSON — room number to name. Only rooms you include get updated; the rest keep their current name. This replaces today's names, not the check-offs.</p>
+      <textarea id="rosterInput" spellcheck="false" placeholder='{
+  "1001": "Rivera",
+  "1002": "Chen"
+}'></textarea>
+      <div class="sheet-actions">
+        <button class="fbtn" id="rosterTemplate">Fill template (all rooms)</button>
+        <button class="fbtn primary" id="rosterApply">Apply names</button>
+      </div>
+      <div class="sheet-actions">
+        <button class="fbtn" id="rosterCopy">Copy current list</button>
+        <button class="fbtn danger" id="rosterClear">Clear all names</button>
+      </div>
+      <div class="msg" id="rosterMsg"></div>
+    </div>
+  </div>
+
+  <div class="scrim" id="exportScrim"></div>
+  <div class="sheet" id="exportSheet" role="dialog" aria-modal="true" aria-labelledby="exportTitle">
+    <div class="sheet-head">
+      <h2 id="exportTitle">Export progress</h2>
+      <button class="iconbtn" data-close="export" aria-label="Close">✕</button>
+    </div>
+    <div class="sheet-body">
+      <p class="hint">Send this to Michele when you're done (or partway). The Excel file has a row per unit — room #, guest name, every check, and any different names shown on the TVs.</p>
+      <div class="sheet-actions" style="margin-top:0">
+        <button class="fbtn primary" id="expXlsx">⬇ Download Excel</button>
+        <button class="fbtn" id="expCopyReport">Copy report</button>
+        <button class="fbtn" id="expCopyJson">Copy raw data</button>
+      </div>
+      <div class="msg" id="exportMsg"></div>
+      <textarea id="exportOut" spellcheck="false" readonly style="margin-top:12px;min-height:230px"></textarea>
+    </div>
+  </div>
+
+  <div class="scrim" id="cfgScrim"></div>
+  <div class="sheet" id="cfgSheet" role="dialog" aria-modal="true" aria-labelledby="cfgTitle">
+    <div class="sheet-head">
+      <h2 id="cfgTitle">Settings</h2>
+      <button class="iconbtn" data-close="cfg" aria-label="Close">✕</button>
+    </div>
+    <div class="sheet-body">
+      <p class="hint">Property / job name — shows in the header and the export.</p>
+      <textarea id="cfgProp" spellcheck="false" style="min-height:44px" placeholder="e.g. MVM783 — Grandview"></textarea>
+      <div class="sheet-actions"><button class="fbtn primary" id="cfgSave">Save name</button></div>
+      <p class="hint" style="margin-top:22px">Start a fresh day — wipes every check-off and TV note (guest names stay).</p>
+      <div class="sheet-actions"><button class="fbtn danger" id="cfgReset">Reset all check-offs</button></div>
+      <div class="msg" id="cfgMsg"></div>
+      <p class="hint" style="margin-top:22px;font-size:12px">Your work autosaves to this phone every 30 seconds and on every tap.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ===CONFIG=== */
+  var STD_TVS = [{ key: "bed", label: "Bedroom TV matches guest" }, { key: "liv", label: "Living room TV matches guest" }];
+  var CONFIG = {
+    property: "MVM783 — Grandview Las Vegas",
+    storeKey: "mvm_punch_783",
+    firmware: "3.18",
+    searchHint: "Find room, guest, ‘bldg 4’, ‘floor 12’…",
+    relabelSub: "Both STBs in this unit",
+    tvColumns: [{ key: "bed", label: "Bedroom" }, { key: "liv", label: "Living" }],
+    makeRooms: function () {
+      var RAW = "1101A 1101B 1102A 1102B 1103A 1103B 1104A 1104B 1105A 1105B 1106A 1106B 1107A 1107B 1108A 1108B 1201A 1201B 1202A 1202B 1203A 1203B 1204A 1204B 1205A 1205B 1206A 1206B 1207A 1207B 1208A 1208B 1301A 1301B 1302A 1302B 1303A 1303B 1304A 1304B 1305A 1305B 1306A 1306B 1307A 1307B 1308A 1308B 1401A 1401B 1402A 1402B 1403A 1403B 1404A 1404B 1405A 1405B 1406A 1406B 1407A 1407B 1408A 1408B 1501A 1501B 1502A 1502B 1503A 1503B 1504A 1504B 1505A 1505B 1506A 1506B 1507A 1507B 1508A 1508B 1601A 1601B 1602A 1602B 1603A 1603B 1604A 1604B 1605A 1605B 1606A 1606B 1607A 1607B 1608A 1608B 1701A 1701B 1702A 1702B 1703A 1703B 1704A 1704B 1705A 1705B 1706A 1706B 1707A 1707B 1708A 1708B 1801A 1801B 1802A 1802B 1803A 1803B 1804A 1804B 1805A 1805B 1806A 1806B 1807A 1807B 1808A 1808B 1901A 1901B 1902A 1902B 1903A 1903B 1904A 1904B 1905A 1905B 1906A 1906B 1907A 1907B 1908A 1908B 11001A 11001B 11002A 11002B 11003A 11003B 11004A 11004B 11005A 11005B 11006A 11006B 11007A 11007B 11008A 11008B 11101A 11101B 11102A 11102B 11103A 11103B 11104A 11104B 11105A 11105B 11106A 11106B 11107A 11107B 11108A 11108B 11201A 11201B 11202A 11202B 11203A 11203B 11204A 11204B 11205A 11205B 11206A 11206B 11207A 11207B 11208A 11208B 2101A 2101B 2102A 2102B 2103A 2103B 2104A 2104B 2105A 2105B 2106A 2106B 2107A 2107B 2108A 2108B 2201A 2201B 2202A 2202B 2203A 2203B 2204A 2204B 2205A 2205B 2206A 2206B 2207A 2207B 2208A 2208B 2301A 2301B 2302A 2302B 2303A 2303B 2304A 2304B 2305A 2305B 2306A 2306B 2307A 2307B 2308A 2308B 2401A 2401B 2402A 2402B 2403A 2403B 2404A 2404B 2405A 2405B 2406A 2406B 2407A 2407B 2408A 2408B 2501A 2501B 2502A 2502B 2503A 2503B 2504A 2504B 2505A 2505B 2506A 2506B 2507A 2507B 2508A 2508B 2601A 2601B 2602A 2602B 2603A 2603B 2604A 2604B 2605A 2605B 2606A 2606B 2607A 2607B 2608A 2608B 2701A 2701B 2702A 2702B 2703A 2703B 2704A 2704B 2705A 2705B 2706A 2706B 2707A 2707B 2708A 2708B 2801A 2801B 2802A 2802B 2803A 2803B 2804A 2804B 2805A 2805B 2806A 2806B 2807A 2807B 2808A 2808B 2901A 2901B 2902A 2902B 2903A 2903B 2904A 2904B 2905A 2905B 2906A 2906B 2907A 2907B 2908A 2908B 21001A 21001B 21002A 21002B 21003A 21003B 21004A 21004B 21005A 21005B 21006A 21006B 21007A 21007B 21008A 21008B 21101A 21101B 21102A 21102B 21103A 21103B 21104A 21104B 21105A 21105B 21106A 21106B 21107A 21107B 21108A 21108B 21201A 21201B 21202A 21202B 21203A 21203B 21204A 21204B 21205A 21205B 21206A 21206B 21207A 21207B 21208A 21208B 3101A 3101B 3102A 3102B 3103A 3103B 3104A 3104B 3105A 3105B 3106A 3106B 3107A 3107B 3108A 3108B 3109A 3109B 3110A 3110B 3201A 3201B 3202A 3202B 3203A 3203B 3204A 3204B 3205A 3205B 3206A 3206B 3207A 3207B 3208A 3208B 3209A 3209B 3210A 3210B 3301A 3301B 3302A 3302B 3303A 3303B 3304A 3304B 3305A 3305B 3306A 3306B 3307A 3307B 3308A 3308B 3309A 3309B 3310A 3310B 3401A 3401B 3402A 3402B 3403A 3403B 3404A 3404B 3405A 3405B 3406A 3406B 3407A 3407B 3408A 3408B 3409A 3409B 3410A 3410B 3501A 3501B 3502A 3502B 3503A 3503B 3504A 3504B 3505A 3505B 3506A 3506B 3507A 3507B 3508A 3508B 3509A 3509B 3510A 3510B 3601A 3601B 3602A 3602B 3603A 3603B 3604A 3604B 3605A 3605B 3606A 3606B 3607A 3607B 3608A 3608B 3609A 3609B 3610A 3610B 3701A 3701B 3702A 3702B 3703A 3703B 3704A 3704B 3705A 3705B 3706A 3706B 3707A 3707B 3708A 3708B 3709A 3709B 3710A 3710B 3801A 3801B 3802A 3802B 3803A 3803B 3804A 3804B 3805A 3805B 3806A 3806B 3807A 3807B 3808A 3808B 3809A 3809B 3810A 3810B 3901A 3901B 3902A 3902B 3903A 3903B 3904A 3904B 3905A 3905B 3906A 3906B 3907A 3907B 3908A 3908B 3909A 3909B 3910A 3910B 31001A 31001B 31002A 31002B 31003A 31003B 31004A 31004B 31005A 31005B 31006A 31006B 31007A 31007B 31008A 31008B 31009A 31009B 31010A 31010B 31101A 31101B 31102A 31102B 31103A 31103B 31104A 31104B 31105A 31105B 31106A 31106B 31107A 31107B 31108A 31108B 31109A 31109B 31110A 31110B 31201A 31201B 31202A 31202B 31203A 31203B 31204A 31204B 31205A 31205B 31206A 31206B 31207A 31207B 31208A 31208B 31209A 31209B 31210A 31210B 4101A 4101B 4102A 4102B 4103A 4103B 4104A 4104B 4105A 4105B 4106A 4106B 4107A 4107B 4108A 4108B 4109A 4109B 4110A 4110B 4201A 4201B 4202A 4202B 4203A 4203B 4204A 4204B 4205A 4205B 4206A 4206B 4207A 4207B 4208A 4208B 4209A 4209B 4210A 4210B 4301A 4301B 4302A 4302B 4303A 4303B 4304A 4304B 4305A 4305B 4306A 4306B 4307A 4307B 4308A 4308B 4309A 4309B 4310A 4310B 4401A 4401B 4402A 4402B 4403A 4403B 4404A 4404B 4405A 4405B 4406A 4406B 4407A 4407B 4408A 4408B 4409A 4409B 4410A 4410B 4501A 4501B 4502A 4502B 4503A 4503B 4504A 4504B 4505A 4505B 4506A 4506B 4507A 4507B 4508A 4508B 4509A 4509B 4510A 4510B 4601A 4601B 4602A 4602B 4603A 4603B 4604A 4604B 4605A 4605B 4606A 4606B 4607A 4607B 4608A 4608B 4609A 4609B 4610A 4610B 4701A 4701B 4702A 4702B 4703A 4703B 4704A 4704B 4705A 4705B 4706A 4706B 4707A 4707B 4708A 4708B 4709A 4709B 4710A 4710B 4801A 4801B 4802A 4802B 4803A 4803B 4804A 4804B 4805A 4805B 4806A 4806B 4807A 4807B 4808A 4808B 4809A 4809B 4810A 4810B 4901A 4901B 4902A 4902B 4903A 4903B 4904A 4904B 4905A 4905B 4906A 4906B 4907A 4907B 4908A 4908B 4909A 4909B 4910A 4910B 41001A 41001B 41002A 41002B 41003A 41003B 41004A 41004B 41005A 41005B 41006A 41006B 41007A 41007B 41008A 41008B 41009A 41009B 41010A 41010B 41101A 41101B 41102A 41102B 41103A 41103B 41104A 41104B 41105A 41105B 41106A 41106B 41107A 41107B 41108A 41108B 41109A 41109B 41110A 41110B 41201A 41201B 41202A 41202B 41203A 41203B 41204A 41204B 41205A 41205B 41206A 41206B 41207A 41207B 41208A 41208B 41209A 41209B 41210A 41210B 41401A 41401B 41402A 41402B 41403A 41403B 41404A 41404B 41405A 41405B 41406A 41406B 41407A 41407B 41408A 41408B 41409A 41409B 41410A 41410B 41501A 41501B 41502A 41502B 41503A 41503B 41504A 41504B 41505A 41505B 41506A 41506B 41507A 41507B 41508A 41508B 41509A 41509B 41510A 41510B 41601A 41601B 41602A 41602B 41603A 41603B 41604A 41604B 41605A 41605B 41606A 41606B 41607A 41607B 41608A 41608B 41609A 41609B 41610A 41610B 41701A 41701B 41702A 41702B 41703A 41703B 41704A 41704B 41705A 41705B 41706A 41706B 41707A 41707B 41708A 41708B 41709A 41709B 41710A 41710B 41801A 41801B 41802A 41802B 41803A 41803B 41804A 41804B 41805A 41805B 41806A 41806B 41807A 41807B 41808A 41808B 41809A 41809B 41810A 41810B 41901A 41901B 41902A 41902B 41903A 41903B 41904A 41904B 41905A 41905B 41906A 41906B 41907A 41907B 41908A 41908B 41909A 41909B 41910A 41910B 42001A 42001B 42002A 42002B 42003A 42003B 42004A 42004B 42005A 42005B 42006A 42006B 42007A 42007B 42008A 42008B 42009A 42009B 42010A 42010B 42101A 42101B 42102A 42102B 42103A 42103B 42104A 42104B 42105A 42105B 42106A 42106B 42107A 42107B 42108A 42108B 42109A 42109B 42110A 42110B 5101A 5101B 5102A 5102B 5103A 5103B 5104A 5104B 5105A 5105B 5106A 5106B 5107A 5107B 5108A 5108B 5109A 5109B 5110A 5110B 5201A 5201B 5202A 5202B 5203A 5203B 5204A 5204B 5205A 5205B 5206A 5206B 5207A 5207B 5208A 5208B 5209A 5209B 5210A 5210B 5301A 5301B 5302A 5302B 5303A 5303B 5304A 5304B 5305A 5305B 5306A 5306B 5307A 5307B 5308A 5308B 5309A 5309B 5310A 5310B 5401A 5401B 5402A 5402B 5403A 5403B 5404A 5404B 5405A 5405B 5406A 5406B 5407A 5407B 5408A 5408B 5409A 5409B 5410A 5410B 5501A 5501B 5502A 5502B 5503A 5503B 5504A 5504B 5505A 5505B 5506A 5506B 5507A 5507B 5508A 5508B 5509A 5509B 5510A 5510B 5601A 5601B 5602A 5602B 5603A 5603B 5604A 5604B 5605A 5605B 5606A 5606B 5607A 5607B 5608A 5608B 5609A 5609B 5610A 5610B 5701A 5701B 5702A 5702B 5703A 5703B 5704A 5704B 5705A 5705B 5706A 5706B 5707A 5707B 5708A 5708B 5709A 5709B 5710A 5710B 5801A 5801B 5802A 5802B 5803A 5803B 5804A 5804B 5805A 5805B 5806A 5806B 5807A 5807B 5808A 5808B 5809A 5809B 5810A 5810B 5901A 5901B 5902A 5902B 5903A 5903B 5904A 5904B 5905A 5905B 5906A 5906B 5907A 5907B 5908A 5908B 5909A 5909B 5910A 5910B 51001A 51001B 51002A 51002B 51003A 51003B 51004A 51004B 51005A 51005B 51006A 51006B 51007A 51007B 51008A 51008B 51009A 51009B 51010A 51010B 51101A 51101B 51102A 51102B 51103A 51103B 51104A 51104B 51105A 51105B 51106A 51106B 51107A 51107B 51108A 51108B 51109A 51109B 51110A 51110B 51201A 51201B 51202A 51202B 51203A 51203B 51204A 51204B 51205A 51205B 51206A 51206B 51207A 51207B 51208A 51208B 51209A 51209B 51210A 51210B 51401A 51401B 51402A 51402B 51403A 51403B 51404A 51404B 51405A 51405B 51406A 51406B 51407A 51407B 51408A 51408B 51409A 51409B 51410A 51410B 51501A 51501B 51502A 51502B 51503A 51503B 51504A 51504B 51505A 51505B 51506A 51506B 51507A 51507B 51508A 51508B 51509A 51509B 51510A 51510B 51601A 51601B 51602A 51602B 51603A 51603B 51604A 51604B 51605A 51605B 51606A 51606B 51607A 51607B 51608A 51608B 51609A 51609B 51610A 51610B 51701A 51701B 51702A 51702B 51703A 51703B 51704A 51704B 51705A 51705B 51706A 51706B 51707A 51707B 51708A 51708B 51709A 51709B 51710A 51710B 51801A 51801B 51802A 51802B 51803A 51803B 51804A 51804B 51805A 51805B 51806A 51806B 51807A 51807B 51808A 51808B 51809A 51809B 51810A 51810B 51901A 51901B 51902A 51902B 51903A 51903B 51904A 51904B 51905A 51905B 51906A 51906B 51907A 51907B 51908A 51908B 51909A 51909B 51910A 51910B 52001A 52001B 52002A 52002B 52003A 52003B 52004A 52004B 52005A 52005B 52006A 52006B 52007A 52007B 52008A 52008B 52009A 52009B 52010A 52010B 52101A 52101B 52102A 52102B 52103A 52103B 52104A 52104B 52105A 52105B 52106A 52106B 52107A 52107B 52108A 52108B 52109A 52109B 52110A 52110B 6101A 6101B 6102A 6102B 6103A 6103B 6104A 6104B 6105A 6105B 6106A 6106B 6107A 6107B 6108A 6108B 6109A 6109B 6110A 6110B 6201A 6201B 6202A 6202B 6203A 6203B 6204A 6204B 6205A 6205B 6206A 6206B 6207A 6207B 6208A 6208B 6209A 6209B 6210A 6210B 6301A 6301B 6302A 6302B 6303A 6303B 6304A 6304B 6305A 6305B 6306A 6306B 6307A 6307B 6308A 6308B 6309A 6309B 6310A 6310B 6401A 6401B 6402A 6402B 6403A 6403B 6404A 6404B 6405A 6405B 6406A 6406B 6407A 6407B 6408A 6408B 6409A 6409B 6410A 6410B 6501A 6501B 6502A 6502B 6503A 6503B 6504A 6504B 6505A 6505B 6506A 6506B 6507A 6507B 6508A 6508B 6509A 6509B 6510A 6510B 6601A 6601B 6602A 6602B 6603A 6603B 6604A 6604B 6605A 6605B 6606A 6606B 6607A 6607B 6608A 6608B 6609A 6609B 6610A 6610B 6701A 6701B 6702A 6702B 6703A 6703B 6704A 6704B 6705A 6705B 6706A 6706B 6707A 6707B 6708A 6708B 6709A 6709B 6710A 6710B 6801A 6801B 6802A 6802B 6803A 6803B 6804A 6804B 6805A 6805B 6806A 6806B 6807A 6807B 6808A 6808B 6809A 6809B 6810A 6810B 6901A 6901B 6902A 6902B 6903A 6903B 6904A 6904B 6905A 6905B 6906A 6906B 6907A 6907B 6908A 6908B 6909A 6909B 6910A 6910B 61001A 61001B 61002A 61002B 61003A 61003B 61004A 61004B 61005A 61005B 61006A 61006B 61007A 61007B 61008A 61008B 61009A 61009B 61010A 61010B 61101A 61101B 61102A 61102B 61103A 61103B 61104A 61104B 61105A 61105B 61106A 61106B 61107A 61107B 61108A 61108B 61109A 61109B 61110A 61110B 61201A 61201B 61202A 61202B 61203A 61203B 61204A 61204B 61205A 61205B 61206A 61206B 61207A 61207B 61208A 61208B 61209A 61209B 61210A 61210B 61401A 61401B 61402A 61402B 61403A 61403B 61404A 61404B 61405A 61405B 61406A 61406B 61407A 61407B 61408A 61408B 61409A 61409B 61410A 61410B 61501A 61501B 61502A 61502B 61503A 61503B 61504A 61504B 61505A 61505B 61506A 61506B 61507A 61507B 61508A 61508B 61509A 61509B 61510A 61510B 61601A 61601B 61602A 61602B 61603A 61603B 61604A 61604B 61605A 61605B 61606A 61606B 61607A 61607B 61608A 61608B 61609A 61609B 61610A 61610B 61701A 61701B 61702A 61702B 61703A 61703B 61704A 61704B 61705A 61705B 61706A 61706B 61707A 61707B 61708A 61708B 61709A 61709B 61710A 61710B 61801A 61801B 61802A 61802B 61803A 61803B 61804A 61804B 61805A 61805B 61806A 61806B 61807A 61807B 61808A 61808B 61809A 61809B 61810A 61810B 61901A 61901B 61902A 61902B 61903A 61903B 61904A 61904B 61905A 61905B 61906A 61906B 61907A 61907B 61908A 61908B 61909A 61909B 61910A 61910B 62001A 62001B 62002A 62002B 62003A 62003B 62004A 62004B 62005A 62005B 62006A 62006B 62007A 62007B 62008A 62008B 62009A 62009B 62010A 62010B 62101A 62101B 62102A 62102B 62103A 62103B 62104A 62104B 62105A 62105B 62106A 62106B 62107A 62107B 62108A 62108B 62109A 62109B 62110A 62110B 8101A 8101B 8102A 8102B 8103A 8103B 8104A 8104B 8105A 8105B 8106A 8106B 8107A 8107B 8108A 8108B 8201A 8201B 8202A 8202B 8203A 8203B 8204A 8204B 8205A 8205B 8206A 8206B 8207A 8207B 8208A 8208B 8301A 8301B 8302A 8302B 8303A 8303B 8304A 8304B 8305A 8305B 8306A 8306B 8307A 8307B 8308A 8308B 8401A 8401B 8402A 8402B 8403A 8403B 8404A 8404B 8405A 8405B 8406A 8406B 8407A 8407B 8408A 8408B 8501A 8501B 8502A 8502B 8503A 8503B 8504A 8504B 8505A 8505B 8506A 8506B 8507A 8507B 8508A 8508B 8601A 8601B 8602A 8602B 8603A 8603B 8604A 8604B 8605A 8605B 8606A 8606B 8607A 8607B 8608A 8608B 8701A 8701B 8702A 8702B 8703A 8703B 8704A 8704B 8705A 8705B 8706A 8706B 8707A 8707B 8708A 8708B 8801A 8801B 8802A 8802B 8803A 8803B 8804A 8804B 8805A 8805B 8806A 8806B 8807A 8807B 8808A 8808B 8901A 8901B 8902A 8902B 8903A 8903B 8904A 8904B 8905A 8905B 8906A 8906B 8907A 8907B 8908A 8908B 81001A 81001B 81002A 81002B 81003A 81003B 81004A 81004B 81005A 81005B 81006A 81006B 81007A 81007B 81008A 81008B 81101A 81101B 81102A 81102B 81103A 81103B 81104A 81104B 81105A 81105B 81106A 81106B 81107A 81107B 81108A 81108B 81201A 81201B 81202A 81202B 81203A 81203B 81204A 81204B 81205A 81205B 81206A 81206B 81207A 81207B 81208A 81208B 9101A 9101B 9102A 9102B 9103A 9103B 9104A 9104B 9105A 9105B 9106A 9106B 9107A 9107B 9108A 9108B 9109A 9109B 9110A 9110B 9201A 9201B 9202A 9202B 9203A 9203B 9204A 9204B 9205A 9205B 9206A 9206B 9207A 9207B 9208A 9208B 9209A 9209B 9210A 9210B 9301A 9301B 9302A 9302B 9303A 9303B 9304A 9304B 9305A 9305B 9306A 9306B 9307A 9307B 9308A 9308B 9309A 9309B 9310A 9310B 9401A 9401B 9402A 9402B 9403A 9403B 9404A 9404B 9405A 9405B 9406A 9406B 9407A 9407B 9408A 9408B 9409A 9409B 9410A 9410B 9501A 9501B 9502A 9502B 9503A 9503B 9504A 9504B 9505A 9505B 9506A 9506B 9507A 9507B 9508A 9508B 9509A 9509B 9510A 9510B 9601A 9601B 9602A 9602B 9603A 9603B 9604A 9604B 9605A 9605B 9606A 9606B 9607A 9607B 9608A 9608B 9609A 9609B 9610A 9610B 9701A 9701B 9702A 9702B 9703A 9703B 9704A 9704B 9705A 9705B 9706A 9706B 9707A 9707B 9708A 9708B 9709A 9709B 9710A 9710B 9801A 9801B 9802A 9802B 9803A 9803B 9804A 9804B 9805A 9805B 9806A 9806B 9807A 9807B 9808A 9808B 9809A 9809B 9810A 9810B 9901A 9901B 9902A 9902B 9903A 9903B 9904A 9904B 9905A 9905B 9906A 9906B 9907A 9907B 9908A 9908B 9909A 9909B 9910A 9910B 91001A 91001B 91002A 91002B 91003A 91003B 91004A 91004B 91005A 91005B 91006A 91006B 91007A 91007B 91008A 91008B 91009A 91009B 91010A 91010B 91101A 91101B 91102A 91102B 91103A 91103B 91104A 91104B 91105A 91105B 91106A 91106B 91107A 91107B 91108A 91108B 91109A 91109B 91110A 91110B 91201A 91201B 91202A 91202B 91203A 91203B 91204A 91204B 91205A 91205B 91206A 91206B 91207A 91207B 91208A 91208B 91209A 91209B 91210A 91210B";
+      return RAW.trim().split(/\s+/).map(function (tok) {
+        var d = tok.replace(/[^0-9]/g, "");
+        var b = +d.charAt(0), room = d.slice(-2), floor = +d.slice(1, -2);
+        return {
+          id: tok, roomNo: tok, sectionSort: b * 100 + floor,
+          sectionLabel: "Bldg " + b + " · Floor " + floor, tvs: STD_TVS,
+          search: (tok + " bldg " + b + " building " + b + " floor " + floor).toLowerCase()
+        };
+      });
+    }
+  };
+  /* ===/CONFIG=== */
+
+  // ---- Model ----
+  var MODEL = (function () {
+    var list = CONFIG.makeRooms();
+    var byId = {}, byKey = {}, secMap = {}, order = [];
+    list.forEach(function (rm) {
+      byId[rm.id] = rm;
+      if (byKey[rm.id] === undefined) byKey[rm.id] = rm;
+      if (byKey[rm.roomNo] === undefined) byKey[rm.roomNo] = rm;
+      if (!secMap[rm.sectionLabel]) { secMap[rm.sectionLabel] = { label: rm.sectionLabel, sort: rm.sectionSort, rooms: [] }; order.push(rm.sectionLabel); }
+      secMap[rm.sectionLabel].rooms.push(rm);
+    });
+    var sections = order.map(function (l) { return secMap[l]; }).sort(function (a, b) { return a.sort - b.sort; });
+    return { list: list, byId: byId, byKey: byKey, sections: sections };
+  })();
+  var ROOMS = MODEL.list.map(function (rm) { return rm.id; });
+  function roomDef(id) { return MODEL.byId[id]; }
+
+  // ---- Storage (resilient) ----
+  var KEY = CONFIG.storeKey;
+  var mem = {}, storeOK = true;
+  try { window.localStorage.setItem("__t", "1"); window.localStorage.removeItem("__t"); } catch (e) { storeOK = false; }
+  function rawGet(k) { try { return storeOK ? window.localStorage.getItem(k) : (mem[k] || null); } catch (e) { return mem[k] || null; } }
+  function rawSet(k, v) { try { if (storeOK) window.localStorage.setItem(k, v); else mem[k] = v; } catch (e) { storeOK = false; mem[k] = v; } }
+
+  var DEFAULT = { prop: CONFIG.property, theme: "", rooms: {}, roster: {} };
+  var data;
+  try { data = JSON.parse(rawGet(KEY)) || {}; } catch (e) { data = {}; }
+  data = Object.assign({}, DEFAULT, data);
+  data.rooms = data.rooms || {};
+  data.roster = data.roster || {};
+
+  function blankRoom(rm) { var t = {}; rm.tvs.forEach(function (tv) { t[tv.key] = { match: false, name: "" }; }); return { relabel: false, fw: false, linear: false, tv: t, guestLocked: null }; }
+  function roomState(id) {
+    var rm = roomDef(id);
+    if (!data.rooms[id]) data.rooms[id] = blankRoom(rm);
+    var s = data.rooms[id];
+    if (!s.tv) s.tv = {};
+    rm.tvs.forEach(function (tv) { if (!s.tv[tv.key]) s.tv[tv.key] = { match: false, name: "" }; });
+    return s;
+  }
+  function tvDone(e) { return e && (e.match || (e.name || "").trim() !== ""); }
+  function roomDone(id) { var s = roomState(id), rm = roomDef(id); if (!(s.relabel && s.fw && s.linear)) return false; return rm.tvs.every(function (tv) { return tvDone(s.tv[tv.key]); }); }
+  function roomTouched(id) { var s = roomState(id), rm = roomDef(id); if (s.relabel || s.fw || s.linear) return true; return rm.tvs.some(function (tv) { return tvDone(s.tv[tv.key]); }); }
+  function roomStatus(id) { return roomDone(id) ? "done" : (roomTouched(id) ? "partial" : ""); }
+  function roomHasFlag(id) { var s = roomState(id), rm = roomDef(id); return rm.tvs.some(function (tv) { return (s.tv[tv.key].name || "").trim() !== ""; }); }
+  function lockIfDone(id) { var s = roomState(id); if (roomDone(id) && s.guestLocked == null) s.guestLocked = rosterName(id); }
+
+  // ---- Save ----
+  var saveDot = document.getElementById("saveDot"), savedTxt = document.getElementById("savedTxt"), saveTimer = null;
+  function persist() { try { rawSet(KEY, JSON.stringify(data)); mark("saved"); } catch (e) { mark("err"); } }
+  function mark(state) {
+    if (state === "saving") { saveDot.className = "savedot saving"; savedTxt.textContent = "Saving…"; }
+    else if (state === "err") { saveDot.className = "savedot err"; savedTxt.textContent = storeOK ? "Save error" : "Not saved — export often"; }
+    else {
+      saveDot.className = "savedot";
+      var d = new Date(), hh = d.getHours(), mm = String(d.getMinutes()).padStart(2, "0"), ap = hh >= 12 ? "PM" : "AM"; hh = hh % 12 || 12;
+      savedTxt.textContent = "Saved " + hh + ":" + mm + " " + ap;
+    }
+  }
+  function queueSave() { mark("saving"); if (saveTimer) clearTimeout(saveTimer); saveTimer = setTimeout(persist, 600); }
+  setInterval(persist, 30000);
+  window.addEventListener("beforeunload", persist);
+  document.addEventListener("visibilitychange", function () { if (document.visibilityState === "hidden") persist(); });
+
+  // ---- Build DOM ----
+  var listEl = document.getElementById("list");
+  var roomEls = {};      // id -> { card, badge, name, lbl }
+  var sectionEls = {};   // label -> { wrap, meta, bar, rooms }
+  function esc(t) { return (t || "").replace(/[&<>"]/g, function (c) { return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]; }); }
+
+  function check(id, key, label, sub) {
+    var s = roomState(id);
+    return '<label class="check" data-r="' + esc(id) + '" data-k="' + key + '">' +
+      '<input type="checkbox"' + (s[key] ? " checked" : "") + '>' +
+      '<span class="box">✓</span>' +
+      '<span class="ctext">' + label + '<small>' + sub + '</small></span></label>';
+  }
+  function tvCheck(id, tv) {
+    var e = roomState(id).tv[tv.key];
+    var showName = !e.match && (e.name || "").trim() !== "";
+    return '<div class="check tv' + (showName ? " show-name" : "") + '" data-r="' + esc(id) + '" data-tv="' + tv.key + '">' +
+        '<label class="hit"><input type="checkbox"' + (e.match ? " checked" : "") + '>' +
+          '<span class="box">✓</span><span class="ctext">' + tv.label + '</span></label>' +
+        '<button type="button" class="differs">Name differs</button>' +
+      '</div>' +
+      '<div class="mismatch"><label>Name showing on TV instead</label>' +
+        '<input type="text" data-r="' + esc(id) + '" data-tvname="' + tv.key + '" value="' + esc(e.name) + '" placeholder="Type the guest name shown" autocomplete="off"></div>';
+  }
+
+  MODEL.sections.forEach(function (sec) {
+    var wrap = document.createElement("section");
+    wrap.className = "floor collapsed";
+    var head = document.createElement("button");
+    head.className = "floor-head";
+    head.innerHTML = '<span class="chev">▾</span><span class="fname">' + esc(sec.label) + '</span>' +
+      '<span class="fbar"><i></i></span><span class="fmeta"></span>';
+    var body = document.createElement("div");
+    body.className = "floor-body";
+
+    sec.rooms.forEach(function (rm) {
+      var id = rm.id;
+      var card = document.createElement("article");
+      card.className = "card collapsed";
+      card.setAttribute("data-room", id);
+      var checksHtml = check(id, "relabel", "All boxes relabeled", CONFIG.relabelSub) +
+        check(id, "fw", "Firmware verified", "Target " + CONFIG.firmware) +
+        check(id, "linear", "Live linear content works", "Live TV channels playing");
+      rm.tvs.forEach(function (tv) { checksHtml += tvCheck(id, tv); });
+      card.innerHTML =
+        '<div class="card-head">' +
+          '<span class="room-no mono">' + esc(rm.roomNo) + '</span>' +
+          '<span class="guest"><span class="lbl">Guest</span><span class="name"></span></span>' +
+          '<span class="badge" hidden></span>' +
+          '<span class="chev">▾</span>' +
+        '</div><div class="checks">' + checksHtml + '</div>';
+      body.appendChild(card);
+      roomEls[id] = { card: card, badge: card.querySelector(".badge"), name: card.querySelector(".guest .name"), lbl: card.querySelector(".guest .lbl") };
+    });
+
+    wrap.appendChild(head); wrap.appendChild(body); listEl.appendChild(wrap);
+    sectionEls[sec.label] = { wrap: wrap, meta: head.querySelector(".fmeta"), bar: head.querySelector(".fbar > i"), rooms: sec.rooms };
+    head.addEventListener("click", function () {
+      var L = sec.label;
+      if (userOpen.has(L)) userOpen.delete(L); else userOpen.add(L);
+      wrap.classList.toggle("collapsed", !userOpen.has(L));
+    });
+  });
+
+  // ---- Events ----
+  listEl.addEventListener("change", function (e) {
+    var box = e.target.closest("input[type=checkbox]");
+    if (!box) return;
+    var lab = box.closest(".check"), id = lab.getAttribute("data-r");
+    if (lab.classList.contains("tv")) {
+      var key = lab.getAttribute("data-tv");
+      roomState(id).tv[key].match = box.checked;
+      if (box.checked) lab.classList.remove("show-name");
+    } else {
+      roomState(id)[lab.getAttribute("data-k")] = box.checked;
+    }
+    lockIfDone(id); updateRoom(id); queueSave(); refreshTotals();
+    if (roomDone(id)) setTimeout(function () { roomEls[id].card.classList.add("collapsed"); }, 220);
+  });
+  listEl.addEventListener("click", function (e) {
+    var db = e.target.closest(".differs");
+    if (db) {
+      var row = db.closest(".check.tv");
+      var opening = !row.classList.contains("show-name");
+      row.classList.toggle("show-name", opening);
+      if (opening) { var inp = row.nextElementSibling.querySelector("input[data-tvname]"); if (inp) setTimeout(function () { inp.focus(); }, 30); }
+      return;
+    }
+    var head = e.target.closest(".card-head");
+    if (head) head.parentNode.classList.toggle("collapsed");
+  });
+  listEl.addEventListener("input", function (e) {
+    var t = e.target;
+    if (t.matches("input[data-tvname]")) {
+      var id = t.getAttribute("data-r"), key = t.getAttribute("data-tvname");
+      roomState(id).tv[key].name = t.value;
+      lockIfDone(id); updateRoom(id); queueSave(); refreshTotals();
+    }
+  });
+  listEl.addEventListener("focusin", function (e) { if (e.target.matches && e.target.matches("input[data-tvname]")) editingRoom = e.target.getAttribute("data-r"); });
+  listEl.addEventListener("focusout", function (e) { if (e.target.matches && e.target.matches("input[data-tvname]")) { editingRoom = null; applyFilter(); } });
+
+  // ---- Rendering ----
+  function rosterName(id) { return data.roster[id] || ""; }
+  function guestName(id) { var s = data.rooms[id]; if (s && s.guestLocked != null) return s.guestLocked; return rosterName(id); }
+  function updateRoom(id) {
+    var el = roomEls[id], s = roomState(id), g = guestName(id), locked = s.guestLocked != null;
+    if (el.lbl) el.lbl.textContent = locked ? "Verified" : "Guest";
+    if (g) { el.name.textContent = g; el.name.classList.remove("empty"); }
+    else { el.name.textContent = "no name loaded"; el.name.classList.add("empty"); }
+    var st = roomStatus(id);
+    el.card.setAttribute("data-status", st);
+    if (st === "done" && !roomHasFlag(id)) { el.badge.hidden = false; el.badge.className = "badge done"; el.badge.textContent = "Done"; }
+    else if (roomHasFlag(id)) { el.badge.hidden = false; el.badge.className = "badge flag"; el.badge.textContent = "Name diff"; }
+    else { el.badge.hidden = true; }
+  }
+  function refreshTotals() {
+    var done = 0, total = ROOMS.length;
+    ROOMS.forEach(function (id) { if (roomDone(id)) done++; });
+    document.getElementById("doneN").textContent = done;
+    document.getElementById("totalN").textContent = total;
+    document.getElementById("trackFill").style.width = (total ? (done / total * 100) : 0) + "%";
+    MODEL.sections.forEach(function (sec) {
+      var fd = 0; sec.rooms.forEach(function (rm) { if (roomDone(rm.id)) fd++; });
+      var fe = sectionEls[sec.label];
+      fe.meta.textContent = fd + "/" + sec.rooms.length;
+      fe.bar.style.width = (fd / sec.rooms.length * 100) + "%";
+    });
+    applyFilter();
+  }
+
+  // ---- Filter + search ----
+  var mode = "inc", q = "", userOpen = new Set(), editingRoom = null;
+  function applyFilter(scrollTo) {
+    var query = q.trim().toLowerCase(), firstMatch = null;
+    MODEL.sections.forEach(function (sec) {
+      var shown = 0;
+      sec.rooms.forEach(function (rm) {
+        var id = rm.id, el = roomEls[id].card, vis = true;
+        if (mode === "inc" && roomDone(id)) vis = false;
+        if (query) { var hay = (rm.search + " " + guestName(id)).toLowerCase(); if (hay.indexOf(query) === -1) vis = false; }
+        if (id === editingRoom) vis = true;
+        el.style.display = vis ? "" : "none";
+        if (vis) shown++;
+      });
+      var fe = sectionEls[sec.label];
+      fe.wrap.style.display = shown ? "" : "none";
+      fe.wrap.classList.toggle("collapsed", query ? shown === 0 : !userOpen.has(sec.label));
+      if (shown && query && !firstMatch) firstMatch = fe.wrap;
+    });
+    if (scrollTo && query && firstMatch) firstMatch.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+  document.getElementById("search").addEventListener("input", function (e) { q = e.target.value; applyFilter(true); });
+  var fAll = document.getElementById("fAll"), fInc = document.getElementById("fInc");
+  fAll.addEventListener("click", function () { mode = "all"; fAll.setAttribute("aria-pressed", "true"); fInc.setAttribute("aria-pressed", "false"); applyFilter(); });
+  fInc.addEventListener("click", function () { mode = "inc"; fInc.setAttribute("aria-pressed", "true"); fAll.setAttribute("aria-pressed", "false"); applyFilter(); });
+
+  // ---- Next to do ----
+  document.getElementById("nextBtn").addEventListener("click", function () {
+    for (var i = 0; i < ROOMS.length; i++) {
+      var id = ROOMS[i];
+      if (!roomDone(id)) {
+        var L = roomDef(id).sectionLabel;
+        userOpen.add(L);
+        sectionEls[L].wrap.classList.remove("collapsed");
+        var card = roomEls[id].card;
+        card.classList.remove("collapsed");
+        card.scrollIntoView({ behavior: "smooth", block: "center" });
+        card.animate([{ boxShadow: "0 0 0 3px var(--accent)" }, { boxShadow: "var(--shadow)" }], { duration: 1100 });
+        return;
+      }
+    }
+    toast("All units complete 🎉");
+  });
+
+  // ---- Sheets ----
+  function openSheet(n) { document.getElementById(n + "Scrim").classList.add("open"); document.getElementById(n + "Sheet").classList.add("open"); }
+  function closeSheet(n) { document.getElementById(n + "Scrim").classList.remove("open"); document.getElementById(n + "Sheet").classList.remove("open"); }
+  document.querySelectorAll("[data-close]").forEach(function (b) { b.addEventListener("click", function () { closeSheet(b.getAttribute("data-close")); }); });
+  document.querySelectorAll(".scrim").forEach(function (s) { s.addEventListener("click", function () { s.classList.remove("open"); closeSheet(s.id.replace("Scrim", "")); }); });
+  document.getElementById("rosterBtn").addEventListener("click", function () { openSheet("roster"); });
+  document.getElementById("exportBtn").addEventListener("click", function () { buildExport(); openSheet("export"); });
+  document.getElementById("cfgBtn").addEventListener("click", function () { document.getElementById("cfgProp").value = data.prop || ""; openSheet("cfg"); });
+
+  // ---- Roster ----
+  var rosterMsg = document.getElementById("rosterMsg");
+  document.getElementById("rosterApply").addEventListener("click", function () {
+    var txt = document.getElementById("rosterInput").value.trim();
+    if (!txt) { rmsg("Paste some JSON first.", false); return; }
+    var obj; try { obj = JSON.parse(txt); } catch (e) { rmsg("That's not valid JSON — check for a missing comma or quote.", false); return; }
+    if (typeof obj !== "object" || Array.isArray(obj)) { rmsg('Expected an object like {"1001":"Name"}.', false); return; }
+    var known = 0, unknown = [];
+    Object.keys(obj).forEach(function (k) { var rm = MODEL.byKey[String(k).trim()]; if (rm) { data.roster[rm.id] = String(obj[k]); known++; } else unknown.push(String(k).trim()); });
+    ROOMS.forEach(updateRoom); persist();
+    var m = "Loaded " + known + " name" + (known === 1 ? "" : "s") + ".";
+    if (unknown.length) m += " Ignored " + unknown.length + " unknown room" + (unknown.length === 1 ? "" : "s") + ": " + unknown.slice(0, 6).join(", ") + (unknown.length > 6 ? "…" : "");
+    rmsg(m, known > 0);
+  });
+  document.getElementById("rosterTemplate").addEventListener("click", function () {
+    var o = {}; MODEL.list.forEach(function (rm) { o[rm.roomNo] = data.roster[rm.id] || ""; });
+    document.getElementById("rosterInput").value = JSON.stringify(o, null, 2);
+    rmsg("Template filled — edit names, then Apply.", true);
+  });
+  document.getElementById("rosterCopy").addEventListener("click", function () {
+    var o = {}; MODEL.list.forEach(function (rm) { if (data.roster[rm.id]) o[rm.roomNo] = data.roster[rm.id]; });
+    copy(JSON.stringify(o, null, 2), rosterMsg, "Current guest list copied.");
+  });
+  document.getElementById("rosterClear").addEventListener("click", function () {
+    if (!confirm("Clear ALL guest names? Check-offs are kept.")) return;
+    data.roster = {}; ROOMS.forEach(updateRoom); persist(); rmsg("All names cleared.", true);
+  });
+  function rmsg(t, ok) { rosterMsg.textContent = t; rosterMsg.className = "msg " + (ok ? "ok" : "bad"); }
+
+  // ---- Settings ----
+  var cfgMsg = document.getElementById("cfgMsg");
+  document.getElementById("cfgSave").addEventListener("click", function () { data.prop = document.getElementById("cfgProp").value.trim(); applyProp(); persist(); cfgMsg.textContent = "Saved."; cfgMsg.className = "msg ok"; });
+  document.getElementById("cfgReset").addEventListener("click", function () {
+    if (!confirm("Reset every check-off and TV note for a fresh day? Guest names stay.")) return;
+    data.rooms = {};
+    ROOMS.forEach(function (id) {
+      var el = roomEls[id].card;
+      el.classList.add("collapsed");
+      el.querySelectorAll("input[type=checkbox]").forEach(function (c) { c.checked = false; });
+      el.querySelectorAll(".check.tv").forEach(function (c) { c.classList.remove("show-name"); });
+      el.querySelectorAll("input[data-tvname]").forEach(function (c) { c.value = ""; });
+      updateRoom(id);
+    });
+    persist(); refreshTotals(); cfgMsg.textContent = "All check-offs reset."; cfgMsg.className = "msg ok";
+  });
+  function applyProp() { document.getElementById("propName").textContent = data.prop ? data.prop : "Tap ⚙ to name property"; }
+
+  // ---- Export ----
+  function tvShort(label) { return label.replace(/ TV matches guest$/, "").replace(/ matches guest$/, ""); }
+  function buildExport() {
+    var d = new Date(), stamp = d.toLocaleString(), done = 0, incomplete = [], flags = [];
+    ROOMS.forEach(function (id) {
+      var s = roomState(id), rm = roomDef(id), g = guestName(id) || "(no name)";
+      if (roomDone(id)) done++;
+      else {
+        var miss = [];
+        if (!s.relabel) miss.push("relabel");
+        if (!s.fw) miss.push("firmware");
+        if (!s.linear) miss.push("live linear");
+        rm.tvs.forEach(function (tv) { if (!tvDone(s.tv[tv.key])) miss.push(tvShort(tv.label)); });
+        incomplete.push(rm.roomNo + " [" + rm.sectionLabel + "] (" + g + ") — needs: " + miss.join(", "));
+      }
+      rm.tvs.forEach(function (tv) { var nm = (s.tv[tv.key].name || "").trim(); if (nm) flags.push(rm.roomNo + " " + tvShort(tv.label) + " (" + g + ") → shows \"" + nm + "\""); });
+    });
+    var lines = [];
+    lines.push("PUNCH LIST — RELABEL & FW VERIFY (target " + CONFIG.firmware + ")");
+    if (data.prop) lines.push("Property: " + data.prop);
+    lines.push("Exported: " + stamp);
+    lines.push("Complete: " + done + " / " + ROOMS.length + " units");
+    lines.push("");
+    lines.push("── TV NAME MISMATCHES (" + flags.length + ") ──");
+    lines.push(flags.length ? flags.join("\n") : "None.");
+    lines.push("");
+    lines.push("── STILL TO DO (" + incomplete.length + ") ──");
+    lines.push(incomplete.length ? incomplete.join("\n") : "None — all units complete.");
+    document.getElementById("exportOut").value = lines.join("\n");
+    document.getElementById("exportOut").setAttribute("data-json", JSON.stringify({ property: data.prop, exported: stamp, rooms: data.rooms, roster: data.roster }, null, 2));
+    document.getElementById("exportMsg").textContent = "";
+  }
+  var exportMsg = document.getElementById("exportMsg");
+  document.getElementById("expCopyReport").addEventListener("click", function () { copy(document.getElementById("exportOut").value, exportMsg, "Report copied — paste it into a message to Michele."); });
+  document.getElementById("expCopyJson").addEventListener("click", function () { copy(document.getElementById("exportOut").getAttribute("data-json"), exportMsg, "Raw data copied."); });
+  document.getElementById("expXlsx").addEventListener("click", function () {
+    try {
+      var headers = ["Room", "Section", "Guest / check-in", "Relabeled", "Firmware " + CONFIG.firmware, "Live linear"];
+      CONFIG.tvColumns.forEach(function (tc) { headers.push(tc.label + " match"); headers.push(tc.label + " name shown"); });
+      headers.push("Status");
+      var rows = [];
+      ROOMS.forEach(function (id) {
+        var s = roomState(id), rm = roomDef(id);
+        var row = [rm.roomNo, rm.sectionLabel, guestName(id) || "", yn(s.relabel), yn(s.fw), yn(s.linear)];
+        CONFIG.tvColumns.forEach(function (tc) { var e = s.tv[tc.key]; if (e) { row.push(yn(e.match)); row.push((e.name || "").trim()); } else { row.push("n/a"); row.push(""); } });
+        row.push(roomDone(id) ? "Complete" : "Incomplete");
+        rows.push(row);
+      });
+      var blob = makeXlsx(headers, rows);
+      var url = URL.createObjectURL(blob), a = document.createElement("a");
+      var d = new Date(), stamp = d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate());
+      var tag = (data.prop || "punchlist").replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "").toLowerCase();
+      a.href = url; a.download = tag + "-" + stamp + ".xlsx"; document.body.appendChild(a); a.click();
+      document.body.removeChild(a); setTimeout(function () { URL.revokeObjectURL(url); }, 3000);
+      exportMsg.textContent = "Excel file downloaded — " + rows.length + " rooms."; exportMsg.className = "msg ok";
+    } catch (e) { exportMsg.textContent = "Couldn't build the Excel file here — use Copy raw data instead."; exportMsg.className = "msg bad"; }
+  });
+  function yn(b) { return b ? "Yes" : "No"; }
+  function pad2(n) { return String(n).padStart(2, "0"); }
+
+  // ---- Minimal .xlsx writer (no dependencies) ----
+  function crc32(bytes) {
+    var table = crc32.t, c, n, k;
+    if (!table) { table = crc32.t = []; for (n = 0; n < 256; n++) { c = n; for (k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1); table[n] = c >>> 0; } }
+    c = 0xFFFFFFFF;
+    for (var i = 0; i < bytes.length; i++) c = table[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+    return (c ^ 0xFFFFFFFF) >>> 0;
+  }
+  var xlsxEnc = new TextEncoder();
+  function xmlEsc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" }[c]; }); }
+  function colRef(i) { var s = ""; i++; while (i > 0) { var m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = Math.floor((i - 1) / 26); } return s; }
+  function sheetXml(all) {
+    var out = ['<?xml version="1.0" encoding="UTF-8" standalone="yes"?>', '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>'];
+    for (var r = 0; r < all.length; r++) {
+      out.push('<row r="' + (r + 1) + '">');
+      for (var c = 0; c < all[r].length; c++) out.push('<c r="' + colRef(c) + (r + 1) + '" t="inlineStr"><is><t xml:space="preserve">' + xmlEsc(all[r][c]) + '</t></is></c>');
+      out.push('</row>');
+    }
+    out.push('</sheetData></worksheet>');
+    return out.join("");
+  }
+  function makeXlsx(headers, rows) {
+    var files = [
+      { name: "[Content_Types].xml", data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>' },
+      { name: "_rels/.rels", data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>' },
+      { name: "xl/workbook.xml", data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Punch List" sheetId="1" r:id="rId1"/></sheets></workbook>' },
+      { name: "xl/_rels/workbook.xml.rels", data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>' },
+      { name: "xl/worksheets/sheet1.xml", data: sheetXml([headers].concat(rows)) }
+    ];
+    function u16(n) { n = n >>> 0; return [n & 255, (n >>> 8) & 255]; }
+    function u32(n) { n = n >>> 0; return [n & 255, (n >>> 8) & 255, (n >>> 16) & 255, (n >>> 24) & 255]; }
+    var chunks = [], central = [], offset = 0;
+    files.forEach(function (f) {
+      var nameB = xlsxEnc.encode(f.name), dataB = xlsxEnc.encode(f.data), crc = crc32(dataB);
+      var local = [].concat(u32(0x04034b50), u16(20), u16(0), u16(0), u16(0), u16(0), u32(crc), u32(dataB.length), u32(dataB.length), u16(nameB.length), u16(0));
+      chunks.push(new Uint8Array(local), nameB, dataB);
+      central.push({ crc: crc, size: dataB.length, nameB: nameB, offset: offset });
+      offset += local.length + nameB.length + dataB.length;
+    });
+    var cdStart = offset, cd = [];
+    central.forEach(function (e) {
+      var rec = [].concat(u32(0x02014b50), u16(20), u16(20), u16(0), u16(0), u16(0), u16(0), u32(e.crc), u32(e.size), u32(e.size), u16(e.nameB.length), u16(0), u16(0), u16(0), u16(0), u32(0), u32(e.offset));
+      cd.push(new Uint8Array(rec), e.nameB);
+      offset += rec.length + e.nameB.length;
+    });
+    var eocd = new Uint8Array([].concat(u32(0x06054b50), u16(0), u16(0), u16(central.length), u16(central.length), u32(offset - cdStart), u32(cdStart), u16(0)));
+    return new Blob(chunks.concat(cd, [eocd]), { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  }
+
+  // ---- Clipboard / toast ----
+  function copy(text, msgEl, okText) {
+    function ok() { if (msgEl) { msgEl.textContent = okText; msgEl.className = "msg ok"; } }
+    function fail() { if (msgEl) { msgEl.textContent = "Couldn't copy automatically — select the text and copy manually."; msgEl.className = "msg bad"; } }
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(ok, function () { legacyCopy(text) ? ok() : fail(); });
+    else { legacyCopy(text) ? ok() : fail(); }
+  }
+  function legacyCopy(text) {
+    try { var ta = document.createElement("textarea"); ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0"; document.body.appendChild(ta); ta.select(); var okc = document.execCommand("copy"); document.body.removeChild(ta); return okc; } catch (e) { return false; }
+  }
+  function toast(t) {
+    var el = document.createElement("div");
+    el.textContent = t;
+    el.style.cssText = "position:fixed;left:50%;bottom:96px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:999px;font-size:14px;font-weight:600;z-index:60;box-shadow:var(--shadow)";
+    document.body.appendChild(el);
+    setTimeout(function () { el.style.transition = "opacity .4s"; el.style.opacity = "0"; setTimeout(function () { el.remove(); }, 400); }, 1600);
+  }
+
+  // ---- Theme ----
+  var themeBtn = document.getElementById("themeBtn");
+  function applyTheme() { if (data.theme) document.documentElement.setAttribute("data-theme", data.theme); else document.documentElement.removeAttribute("data-theme"); }
+  themeBtn.addEventListener("click", function () { var cur = data.theme || (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"); data.theme = cur === "dark" ? "light" : "dark"; applyTheme(); persist(); });
+
+  // ---- Init ----
+  document.getElementById("search").placeholder = CONFIG.searchHint;
+  applyTheme(); applyProp();
+  ROOMS.forEach(updateRoom);
+  refreshTotals();
+  mark("saved");
+})();
+</script>
+
+</body>
+</html>
