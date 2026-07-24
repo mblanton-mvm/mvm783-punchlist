@@ -307,14 +307,19 @@
   </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 (function () {
   "use strict";
+
+  var SUPA_URL = "https://zhqyjmugyoqvztqqegis.supabase.co";
+  var SUPA_KEY = "sb_publishable_Ehu06hwE9_VJyT_ivtteyg_bmos1qeN";
 
   /* ===CONFIG=== */
   var STD_TVS = [{ key: "bed", label: "Bedroom TV matches guest" }, { key: "liv", label: "Living room TV matches guest" }];
   var CONFIG = {
     property: "MVM783 — Grandview Las Vegas",
+    propId: "783",
     storeKey: "mvm_punch_783",
     firmware: "3.18",
     searchHint: "Find room, guest, ‘bldg 4’, ‘floor 12’…",
@@ -373,6 +378,12 @@
     var s = data.rooms[id];
     if (!s.tv) s.tv = {};
     rm.tvs.forEach(function (tv) { if (!s.tv[tv.key]) s.tv[tv.key] = { match: false, name: "" }; });
+    // migrate legacy 784 shape (bedM/bedName/livM/livName) into the tv map, once
+    if (s.bedM !== undefined && !s._mig) {
+      if (s.tv.bed) s.tv.bed = { match: !!s.bedM, name: s.bedName || "" };
+      if (s.tv.liv) s.tv.liv = { match: !!s.livM, name: s.livName || "" };
+      s._mig = true;
+    }
     return s;
   }
   function tvDone(e) { return e && (e.match || (e.name || "").trim() !== ""); }
@@ -382,20 +393,17 @@
   function roomHasFlag(id) { var s = roomState(id), rm = roomDef(id); return rm.tvs.some(function (tv) { return (s.tv[tv.key].name || "").trim() !== ""; }); }
   function lockIfDone(id) { var s = roomState(id); if (roomDone(id) && s.guestLocked == null) s.guestLocked = rosterName(id); }
 
-  // ---- Save ----
+  // ---- Local save (silent offline cache; the header status is driven by sync) ----
   var saveDot = document.getElementById("saveDot"), savedTxt = document.getElementById("savedTxt"), saveTimer = null;
-  function persist() { try { rawSet(KEY, JSON.stringify(data)); mark("saved"); } catch (e) { mark("err"); } }
-  function mark(state) {
-    if (state === "saving") { saveDot.className = "savedot saving"; savedTxt.textContent = "Saving…"; }
-    else if (state === "err") { saveDot.className = "savedot err"; savedTxt.textContent = storeOK ? "Save error" : "Not saved — export often"; }
-    else {
-      saveDot.className = "savedot";
-      var d = new Date(), hh = d.getHours(), mm = String(d.getMinutes()).padStart(2, "0"), ap = hh >= 12 ? "PM" : "AM"; hh = hh % 12 || 12;
-      savedTxt.textContent = "Saved " + hh + ":" + mm + " " + ap;
-    }
+  function persist() { try { rawSet(KEY, JSON.stringify(data)); } catch (e) {} }
+  function setStatus(state) {
+    if (state === "live") { saveDot.className = "savedot"; savedTxt.textContent = "● Live"; }
+    else if (state === "sync") { saveDot.className = "savedot saving"; savedTxt.textContent = "Syncing…"; }
+    else if (state === "offline") { saveDot.className = "savedot err"; savedTxt.textContent = "Offline — saved on phone"; }
+    else { saveDot.className = "savedot err"; savedTxt.textContent = "Local only"; }
   }
-  function queueSave() { mark("saving"); if (saveTimer) clearTimeout(saveTimer); saveTimer = setTimeout(persist, 600); }
-  setInterval(persist, 30000);
+  function queueSave() { if (saveTimer) clearTimeout(saveTimer); saveTimer = setTimeout(persist, 400); }
+  setInterval(persist, 15000);
   window.addEventListener("beforeunload", persist);
   document.addEventListener("visibilitychange", function () { if (document.visibilityState === "hidden") persist(); });
 
@@ -475,7 +483,7 @@
     } else {
       roomState(id)[lab.getAttribute("data-k")] = box.checked;
     }
-    lockIfDone(id); updateRoom(id); queueSave(); refreshTotals();
+    lockIfDone(id); updateRoom(id); queueSave(); schedulePush(id); refreshTotals();
     if (roomDone(id)) setTimeout(function () { roomEls[id].card.classList.add("collapsed"); }, 220);
   });
   listEl.addEventListener("click", function (e) {
@@ -495,7 +503,7 @@
     if (t.matches("input[data-tvname]")) {
       var id = t.getAttribute("data-r"), key = t.getAttribute("data-tvname");
       roomState(id).tv[key].name = t.value;
-      lockIfDone(id); updateRoom(id); queueSave(); refreshTotals();
+      lockIfDone(id); updateRoom(id); queueSave(); schedulePush(id); refreshTotals();
     }
   });
   listEl.addEventListener("focusin", function (e) { if (e.target.matches && e.target.matches("input[data-tvname]")) editingRoom = e.target.getAttribute("data-r"); });
@@ -590,9 +598,9 @@
     if (!txt) { rmsg("Paste some JSON first.", false); return; }
     var obj; try { obj = JSON.parse(txt); } catch (e) { rmsg("That's not valid JSON — check for a missing comma or quote.", false); return; }
     if (typeof obj !== "object" || Array.isArray(obj)) { rmsg('Expected an object like {"1001":"Name"}.', false); return; }
-    var known = 0, unknown = [];
-    Object.keys(obj).forEach(function (k) { var rm = MODEL.byKey[String(k).trim()]; if (rm) { data.roster[rm.id] = String(obj[k]); known++; } else unknown.push(String(k).trim()); });
-    ROOMS.forEach(updateRoom); persist();
+    var known = 0, unknown = [], changed = [];
+    Object.keys(obj).forEach(function (k) { var rm = MODEL.byKey[String(k).trim()]; if (rm) { data.roster[rm.id] = String(obj[k]); changed.push(rm.id); known++; } else unknown.push(String(k).trim()); });
+    ROOMS.forEach(updateRoom); persist(); pushRoster(changed);
     var m = "Loaded " + known + " name" + (known === 1 ? "" : "s") + ".";
     if (unknown.length) m += " Ignored " + unknown.length + " unknown room" + (unknown.length === 1 ? "" : "s") + ": " + unknown.slice(0, 6).join(", ") + (unknown.length > 6 ? "…" : "");
     rmsg(m, known > 0);
@@ -607,8 +615,9 @@
     copy(JSON.stringify(o, null, 2), rosterMsg, "Current guest list copied.");
   });
   document.getElementById("rosterClear").addEventListener("click", function () {
-    if (!confirm("Clear ALL guest names? Check-offs are kept.")) return;
-    data.roster = {}; ROOMS.forEach(updateRoom); persist(); rmsg("All names cleared.", true);
+    if (!confirm("Clear ALL guest names for EVERYONE on this list? Check-offs are kept.")) return;
+    var ids = Object.keys(data.roster);
+    data.roster = {}; ROOMS.forEach(updateRoom); persist(); pushRoster(ids); rmsg("All names cleared.", true);
   });
   function rmsg(t, ok) { rosterMsg.textContent = t; rosterMsg.className = "msg " + (ok ? "ok" : "bad"); }
 
@@ -616,8 +625,8 @@
   var cfgMsg = document.getElementById("cfgMsg");
   document.getElementById("cfgSave").addEventListener("click", function () { data.prop = document.getElementById("cfgProp").value.trim(); applyProp(); persist(); cfgMsg.textContent = "Saved."; cfgMsg.className = "msg ok"; });
   document.getElementById("cfgReset").addEventListener("click", function () {
-    if (!confirm("Reset every check-off and TV note for a fresh day? Guest names stay.")) return;
-    data.rooms = {};
+    if (!confirm("New day: reset every check-off and TV note for EVERYONE on this list (across all phones)? Guest names stay.")) return;
+    data.rooms = {}; pending.clear(); persistPending();
     ROOMS.forEach(function (id) {
       var el = roomEls[id].card;
       el.classList.add("collapsed");
@@ -626,7 +635,9 @@
       el.querySelectorAll("input[data-tvname]").forEach(function (c) { c.value = ""; });
       updateRoom(id);
     });
-    persist(); refreshTotals(); cfgMsg.textContent = "All check-offs reset."; cfgMsg.className = "msg ok";
+    persist(); refreshTotals();
+    if (sb) sb.from("punch_rooms").delete().eq("property", PROP).then(function () {}, function () {});
+    cfgMsg.textContent = "All check-offs reset for everyone."; cfgMsg.className = "msg ok";
   });
   function applyProp() { document.getElementById("propName").textContent = data.prop ? data.prop : "Tap ⚙ to name property"; }
 
@@ -762,12 +773,108 @@
   function applyTheme() { if (data.theme) document.documentElement.setAttribute("data-theme", data.theme); else document.documentElement.removeAttribute("data-theme"); }
   themeBtn.addEventListener("click", function () { var cur = data.theme || (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"); data.theme = cur === "dark" ? "light" : "dark"; applyTheme(); persist(); });
 
+  // ---- Supabase real-time sync ----
+  var PROP = CONFIG.propId;
+  var sb = null, pending = new Set(), lastLocalEdit = {}, pushTimers = {};
+  try { (JSON.parse(rawGet(KEY + "_pending")) || []).forEach(function (id) { pending.add(id); }); } catch (e) {}
+  function persistPending() { rawSet(KEY + "_pending", JSON.stringify(Array.from(pending))); }
+
+  function schedulePush(id) {
+    lastLocalEdit[id] = Date.now();
+    if (!sb) return;
+    if (pushTimers[id]) clearTimeout(pushTimers[id]);
+    pushTimers[id] = setTimeout(function () { pushRoom(id); }, 350);
+  }
+  function pushRoom(id) {
+    if (!sb) return;
+    setStatus("sync");
+    sb.from("punch_rooms").upsert([{ property: PROP, room_id: id, data: roomState(id), updated_at: new Date().toISOString() }], { onConflict: "property,room_id" })
+      .then(function (res) {
+        if (res.error) { pending.add(id); persistPending(); setStatus("offline"); }
+        else { pending.delete(id); persistPending(); setStatus(pending.size ? "sync" : "live"); }
+      }, function () { pending.add(id); persistPending(); setStatus("offline"); });
+  }
+  function pushRoster(ids) {
+    if (!sb || !ids.length) return;
+    var rows = ids.map(function (id) { return { property: PROP, room_id: id, name: data.roster[id] || "", updated_at: new Date().toISOString() }; });
+    setStatus("sync");
+    sb.from("punch_roster").upsert(rows, { onConflict: "property,room_id" }).then(function (res) { setStatus(res.error ? "offline" : "live"); }, function () { setStatus("offline"); });
+  }
+  function flushPending() { if (!sb) return; Array.from(pending).forEach(function (id) { pushRoom(id); }); }
+
+  function recentlyMine(id) { return pending.has(id) || (Date.now() - (lastLocalEdit[id] || 0) < 3000); }
+  function applyServerRoom(id, d) {
+    if (recentlyMine(id)) return;
+    data.rooms[id] = d; queueSave();
+    if (roomEls[id]) { syncRoomDom(id); updateRoom(id); }
+    refreshTotals();
+  }
+  function applyServerDelete(id) {
+    if (recentlyMine(id)) return;
+    delete data.rooms[id]; queueSave();
+    if (roomEls[id]) { syncRoomDom(id); updateRoom(id); }
+    refreshTotals();
+  }
+  function applyServerRoster(id, name) {
+    data.roster[id] = name; queueSave();
+    if (roomEls[id]) updateRoom(id);
+    refreshTotals();
+  }
+  // Re-render a room's checkbox/name DOM from its (possibly server-updated) state
+  function syncRoomDom(id) {
+    var el = roomEls[id].card, s = roomState(id), rm = roomDef(id);
+    var byk = {};
+    el.querySelectorAll(".check[data-k]").forEach(function (c) { byk[c.getAttribute("data-k")] = c.querySelector("input"); });
+    ["relabel", "fw", "linear"].forEach(function (k) { if (byk[k]) byk[k].checked = !!s[k]; });
+    el.querySelectorAll(".check.tv").forEach(function (row) {
+      var key = row.getAttribute("data-tv"), e = s.tv[key] || { match: false, name: "" };
+      var cb = row.querySelector("input"); if (cb) cb.checked = !!e.match;
+      var mm = row.nextElementSibling, inp = mm && mm.querySelector("input[data-tvname]");
+      if (inp && document.activeElement !== inp) inp.value = e.name || "";
+      row.classList.toggle("show-name", !e.match && (e.name || "").trim() !== "");
+    });
+    if (roomDone(id)) el.classList.add("collapsed");
+  }
+
+  function initSync() {
+    if (!window.supabase || !window.supabase.createClient) { setStatus("local"); return; }
+    try { sb = window.supabase.createClient(SUPA_URL, SUPA_KEY); } catch (e) { setStatus("local"); return; }
+    setStatus("sync");
+    sb.from("punch_rooms").select("room_id,data").eq("property", PROP).then(function (res) {
+      var serverIds = {};
+      if (!res.error && res.data) res.data.forEach(function (row) { serverIds[row.room_id] = 1; if (!pending.has(row.room_id)) data.rooms[row.room_id] = row.data; });
+      // seed the server with any local-only work (e.g. what a crew already did before this switch)
+      Object.keys(data.rooms).forEach(function (id) { if (!serverIds[id] && roomState(id) && (roomDone(id) || true)) pending.add(id); });
+      persistPending(); queueSave();
+      ROOMS.forEach(function (id) { if (roomEls[id]) { syncRoomDom(id); updateRoom(id); } });
+      refreshTotals(); flushPending();
+    }, function () { setStatus("offline"); });
+    sb.from("punch_roster").select("room_id,name").eq("property", PROP).then(function (res) {
+      if (!res.error && res.data) { res.data.forEach(function (row) { data.roster[row.room_id] = row.name; }); queueSave(); ROOMS.forEach(function (id) { if (roomEls[id]) updateRoom(id); }); refreshTotals(); }
+    });
+    sb.channel("punch-" + PROP)
+      .on("postgres_changes", { event: "*", schema: "public", table: "punch_rooms", filter: "property=eq." + PROP }, function (p) {
+        if (p.eventType === "DELETE") { if (p.old && p.old.room_id != null) applyServerDelete(p.old.room_id); }
+        else if (p.new && p.new.room_id != null) applyServerRoom(p.new.room_id, p.new.data);
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "punch_roster", filter: "property=eq." + PROP }, function (p) {
+        if (p.new && p.new.room_id != null) applyServerRoster(p.new.room_id, p.new.name);
+      })
+      .subscribe(function (status) {
+        if (status === "SUBSCRIBED") { setStatus(pending.size ? "sync" : "live"); flushPending(); }
+        else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") setStatus("offline");
+      });
+    setInterval(flushPending, 15000);
+    window.addEventListener("online", flushPending);
+  }
+
   // ---- Init ----
   document.getElementById("search").placeholder = CONFIG.searchHint;
   applyTheme(); applyProp();
   ROOMS.forEach(updateRoom);
   refreshTotals();
-  mark("saved");
+  setStatus("local");
+  initSync();
 })();
 </script>
 
