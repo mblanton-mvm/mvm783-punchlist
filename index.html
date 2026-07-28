@@ -181,6 +181,11 @@
   .disp-btn[data-dval="welcome"][aria-pressed="true"] { background: var(--good); border-color: var(--good); color: #fff; }
   .disp-btn[data-dval="guest"][aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
   .disp-btn[data-dval="name"][aria-pressed="true"] { background: var(--warn); border-color: var(--warn); color: #fff; }
+  .check.extras { display: block; cursor: default; min-height: 0; padding: 11px 14px; }
+  .ex-wrap { display: flex; gap: 8px; width: 100%; }
+  .ex { flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .ex > span { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-soft); }
+  .ex > input { width: 100%; height: 42px; border-radius: 9px; border: 1px solid var(--line-strong); background: var(--surface-2); color: var(--ink); padding: 0 10px; font-size: 15px; font-weight: 600; }
   .comment-field { padding: 2px 14px 12px 14px; display: none; }
   .check.comment.show-c + .comment-field { display: block; }
   .comment-field label { display: block; font-size: 11px; font-weight: 700; color: var(--ink-soft); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 5px; }
@@ -359,7 +364,7 @@
 
   var SUPA_URL = "https://zhqyjmugyoqvztqqegis.supabase.co";
   var SUPA_KEY = "sb_publishable_Ehu06hwE9_VJyT_ivtteyg_bmos1qeN";
-  var BUILD_ID = "1785242916";   // bumped every deploy; used for auto-update
+  var BUILD_ID = "1785244141";   // bumped every deploy; used for auto-update
 
   // Auto-update: fetch our own page (cache-busted); if the deployed build changed, reload — unless mid-edit
   function isBusy() { return !!editingRoom || !!document.querySelector(".sheet.open") || !!document.querySelector(".scrim.open"); }
@@ -535,7 +540,7 @@
   function qRow(id, key, label, sub) {
     var s = roomState(id);
     return '<div class="check q" data-r="' + esc(id) + '" data-field="' + key + '">' +
-        '<span class="ctext">' + label + '<small>' + sub + '</small></span>' + ynHtml(s[key]) +
+        '<span class="ctext">' + label + (sub ? '<small>' + sub + '</small>' : '') + '</span>' + ynHtml(s[key]) +
       '</div>';
   }
   function tvRow(id, tv) {
@@ -555,10 +560,17 @@
   function commentRow(id) {
     var s = roomState(id);
     return '<div class="check comment' + (s.commentChoice === "yes" ? " show-c" : "") + '" data-r="' + esc(id) + '" data-field="comment">' +
-        '<span class="ctext">Any comments?</span>' + ynHtml(s.commentChoice) +
+        '<span class="ctext">Comments</span>' + ynHtml(s.commentChoice) +
       '</div>' +
       '<div class="comment-field"><label>Comment</label>' +
         '<textarea data-comment="' + esc(id) + '" placeholder="Type the comment">' + esc(s.commentText) + '</textarea></div>';
+  }
+  function extrasRow(id) {
+    var s = roomState(id), ex = s.extra || {};
+    var flds = CONFIG.extraInputs.map(function (f) {
+      return '<label class="ex"><span>' + esc(f.label) + '</span><input type="text" inputmode="decimal" data-r="' + esc(id) + '" data-extra="' + f.key + '" value="' + esc(ex[f.key] || "") + '" autocomplete="off"></label>';
+    }).join("");
+    return '<div class="check extras"><div class="ex-wrap">' + flds + '</div></div>';
   }
 
   MODEL.sections.forEach(function (sec) {
@@ -576,10 +588,11 @@
       var card = document.createElement("article");
       card.className = "card collapsed";
       card.setAttribute("data-room", id);
-      var checksHtml = qRow(id, "relabel", "Boxes relabeled?", CONFIG.relabelSub) +
-        qRow(id, "fw", "Firmware verified?", "Target " + CONFIG.firmware) +
-        qRow(id, "linear", "Live linear content works?", "Live TV channels playing");
+      var checksHtml = qRow(id, "relabel", "Boxes labeled w/ @B or @L", "") +
+        qRow(id, "fw", "Firmware verified " + CONFIG.firmware, "") +
+        qRow(id, "linear", "Live linear content works", "");
       rm.tvs.forEach(function (tv) { checksHtml += tvRow(id, tv); });
+      if (CONFIG.extraInputs && CONFIG.extraInputs.length) checksHtml += extrasRow(id);
       checksHtml += commentRow(id);
       card.innerHTML =
         '<div class="card-head">' +
@@ -650,13 +663,17 @@
       var id = t.getAttribute("data-r"), key = t.getAttribute("data-tvname");
       roomState(id).tv[key].name = t.value;
       lockIfDone(id); updateRoom(id); queueSave(); schedulePush(id); refreshTotals();
+    } else if (t.matches("input[data-extra]")) {
+      var xid = t.getAttribute("data-r"), xk = t.getAttribute("data-extra"), xs = roomState(xid);
+      if (!xs.extra) xs.extra = {};
+      xs.extra[xk] = t.value; queueSave(); schedulePush(xid);
     } else if (t.matches("textarea[data-comment]")) {
       var cid = t.getAttribute("data-comment");
       roomState(cid).commentText = t.value;
       lockIfDone(cid); updateRoom(cid); queueSave(); schedulePush(cid); refreshTotals();
     }
   });
-  listEl.addEventListener("focusin", function (e) { if (e.target.matches && e.target.matches("input[data-tvname], textarea[data-comment]")) editingRoom = e.target.getAttribute("data-r") || e.target.getAttribute("data-comment"); });
+  listEl.addEventListener("focusin", function (e) { if (e.target.matches && e.target.matches("input[data-tvname], input[data-extra], textarea[data-comment]")) editingRoom = e.target.getAttribute("data-r") || e.target.getAttribute("data-comment"); });
   listEl.addEventListener("focusout", function (e) { if (e.target.matches && e.target.matches("input[data-tvname], textarea[data-comment]")) { editingRoom = null; applyFilter(); } });
 
   // ---- Rendering ----
@@ -927,12 +944,14 @@
     try {
       var headers = ["Room", "Section", "Guest / check-in", "Relabeled?", "Firmware " + CONFIG.firmware + "?", "Live linear?"];
       CONFIG.tvColumns.forEach(function (tc) { headers.push(tc.label + " shows"); headers.push(tc.label + " name"); });
+      (CONFIG.extraInputs || []).forEach(function (f) { headers.push(f.label); });
       headers.push("M2 FW needed"); headers.push("Comment"); headers.push("Issues"); headers.push("Status"); headers.push("Completed (local time)");
       var rows = [];
       ROOMS.forEach(function (id) {
         var s = roomState(id), rm = roomDef(id);
         var row = [rm.roomNo, rm.sectionLabel, guestName(id) || "", ynStr(s.relabel), ynStr(s.fw), ynStr(s.linear)];
         CONFIG.tvColumns.forEach(function (tc) { var e = s.tv[tc.key]; if (e) { row.push(dispStr(e)); row.push((e.name || "").trim()); } else { row.push("n/a"); row.push(""); } });
+        (CONFIG.extraInputs || []).forEach(function (f) { row.push((s.extra || {})[f.key] || ""); });
         row.push(data.fw[id] ? "Yes" : "");
         row.push((s.commentText || "").trim());
         row.push(issueText(id));
@@ -1091,6 +1110,7 @@
       var ta = crow.nextElementSibling.querySelector("textarea");
       if (ta && document.activeElement !== ta) ta.value = s.commentText || "";
     }
+    el.querySelectorAll("input[data-extra]").forEach(function (inp) { var xk = inp.getAttribute("data-extra"); if (document.activeElement !== inp) inp.value = (s.extra || {})[xk] || ""; });
     if (roomDone(id)) el.classList.add("collapsed");
   }
 
