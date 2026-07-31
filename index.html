@@ -135,6 +135,10 @@
   .badge.done { background: var(--good-soft); color: var(--good); }
   .badge.flag { background: var(--flag-soft); color: var(--flag); }
   .fwchip { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; padding: 4px 8px; border-radius: 999px; flex: none; background: var(--warn-soft); color: var(--warn); white-space: nowrap; }
+  .flagsel { flex: none; max-width: 112px; font-size: 10px; font-weight: 700; border: 1px solid #cfd4da; border-radius: 999px; padding: 3px 7px; background: #eef0f3; color: #333; -webkit-appearance: none; appearance: none; white-space: nowrap; }
+  .flagsel.fg-ok { background: #d7f0de; border-color: #8ccb9d; color: #1c6b32; }
+  .flagsel.fg-rev { background: #fddede; border-color: #e39a9a; color: #9a2b2b; }
+  .flagsel.fg-todo { background: #d9e9fb; border-color: #97c0ea; color: #1c518f; }
 
   .checks { border-top: 1px solid var(--line); }
   .check {
@@ -315,12 +319,7 @@
           <option value="inc">To do</option>
           <option value="all">All rooms</option>
           <option value="done">Completed</option>
-          <option value="norelabel">⚠ Not relabeled</option>
-          <option value="nofw">⚠ FW not verified</option>
-          <option value="nodevmac">⚠ Device MAC not set</option>
-          <option value="nolinear">⚠ Linear not working</option>
           <option value="notv">📺 Name shown on a TV</option>
-          <option value="fwneeded">🔧 M2 FW update needed</option>
           <option value="comment">💬 Has comment</option>
         </select>
       </div>
@@ -480,6 +479,17 @@
   try { window.localStorage.setItem("__t", "1"); window.localStorage.removeItem("__t"); } catch (e) { storeOK = false; }
   function rawGet(k) { try { return storeOK ? window.localStorage.getItem(k) : (mem[k] || null); } catch (e) { return mem[k] || null; } }
   function rawSet(k, v) { try { if (storeOK) window.localStorage.setItem(k, v); else mem[k] = v; } catch (e) { storeOK = false; mem[k] = v; } }
+  // ---- Silent device id (no login): stamps which device completed a room ----
+  var DEVICE_ID = rawGet("__mvm_dev");
+  if (!DEVICE_ID) { try { DEVICE_ID = (window.crypto && crypto.randomUUID) ? crypto.randomUUID().slice(0, 8) : ("D" + Math.random().toString(36).slice(2, 8)); } catch (e) { DEVICE_ID = "D" + Math.random().toString(36).slice(2, 8); } rawSet("__mvm_dev", DEVICE_ID); }
+  // ---- Relabel flags (seeded from the iCX audit; a tech's choice overrides the seed) ----
+  var FLAG_SEED = {};
+  var FLAGLABEL = { verified: "Verified", br_mis: "BR mislbl", lr_mis: "LR mislbl", br_mis_lr_off: "BR bad\u00b7LR off", lr_mis_br_off: "LR bad\u00b7BR off", both_mis: "Both mislbl", tbd_none: "TBD\u00b7none", br_ok_lr_off: "BR ok\u00b7LR off", lr_ok_br_off: "LR ok\u00b7BR off", br_ok_lr_rl: "BR ok\u00b7LR RL", lr_ok_br_rl: "LR ok\u00b7BR RL", rl_both: "Relabel both", rl_1off: "Relabel 1 off", rl_none: "Relabel none" };
+  var FLAGGRP = { verified: "ok", br_mis: "rev", lr_mis: "rev", br_mis_lr_off: "rev", lr_mis_br_off: "rev", both_mis: "rev", tbd_none: "rev", br_ok_lr_off: "rev", lr_ok_br_off: "rev", br_ok_lr_rl: "rev", lr_ok_br_rl: "rev", rl_both: "todo", rl_1off: "todo", rl_none: "todo" };
+  var FLAG_GROUPS = [["Completed \u2014 Verified", ["verified"]], ["Completed \u2014 Needs Revisit", ["br_mis", "lr_mis", "br_mis_lr_off", "lr_mis_br_off", "both_mis", "tbd_none", "br_ok_lr_off", "lr_ok_br_off", "br_ok_lr_rl", "lr_ok_br_rl"]], ["To Do \u2014 Relabel", ["rl_both", "rl_1off", "rl_none"]]];
+  function roomFlag(id) { var s = data.rooms[id]; return (s && s.flag !== undefined) ? s.flag : (FLAG_SEED[id] || ""); }
+  function flagGrp(v) { return FLAGGRP[v] || ""; }
+  function flagOptsHtml(cur) { var h = '<option value=""' + (cur === "" ? " selected" : "") + '>\u2014 flag \u2014</option>'; FLAG_GROUPS.forEach(function (g) { h += '<optgroup label="' + g[0] + '">'; g[1].forEach(function (v) { h += '<option value="' + v + '"' + (cur === v ? " selected" : "") + '>' + FLAGLABEL[v] + '</option>'; }); h += '</optgroup>'; }); return h; }
 
   var DEFAULT = { prop: CONFIG.property, theme: "", rooms: {}, roster: {}, fw: {} };
   var data;
@@ -555,7 +565,7 @@
     return out;
   }
   function roomStatus(id) { return roomDone(id) ? (issuesOf(id).length ? "issue" : "done") : (roomTouched(id) ? "partial" : ""); }
-  function lockIfDone(id) { var s = roomState(id); if (roomDone(id)) { if (s.guestLocked == null) s.guestLocked = rosterName(id); if (!s.doneAt) s.doneAt = new Date().toISOString(); } else if (s.doneAt) { s.doneAt = null; } }
+  function lockIfDone(id) { var s = roomState(id); if (roomDone(id)) { if (s.guestLocked == null) s.guestLocked = rosterName(id); if (!s.doneAt) { s.doneAt = new Date().toISOString(); s.doneBy = DEVICE_ID; } } else if (s.doneAt) { s.doneAt = null; } }
   // Resolve a list of room tokens (exact unit code, exact room#, or a plain room# → all its units) into a set of room ids.
   function flagSetFromTokens(tokens) {
     var set = {}, unknown = [];
@@ -658,10 +668,11 @@
           '<span class="guest"><span class="lbl">Guest</span><span class="name"></span></span>' +
           '<span class="fwchip" hidden>⬆ M2 FW</span>' +
           '<span class="badge" hidden></span>' +
+          '<select class="flagsel" data-r="' + esc(id) + '">' + flagOptsHtml(roomFlag(id)) + '</select>' +
           '<span class="chev">▾</span>' +
         '</div><div class="checks">' + checksHtml + '</div>';
       body.appendChild(card);
-      roomEls[id] = { card: card, badge: card.querySelector(".badge"), name: card.querySelector(".guest .name"), lbl: card.querySelector(".guest .lbl"), fwchip: card.querySelector(".fwchip") };
+      roomEls[id] = { card: card, badge: card.querySelector(".badge"), name: card.querySelector(".guest .name"), lbl: card.querySelector(".guest .lbl"), fwchip: card.querySelector(".fwchip"), sel: card.querySelector(".flagsel") };
     });
 
     wrap.appendChild(head); wrap.appendChild(body); listEl.appendChild(wrap);
@@ -686,6 +697,7 @@
   }
   // ---- Events ----
   listEl.addEventListener("click", function (e) {
+    if (e.target.closest(".flagsel")) return;
     var pb = e.target.closest(".pk-btn");
     if (pb) {
       var prow = pb.closest(".check.picker"), pid = prow.getAttribute("data-r"), pkey = prow.getAttribute("data-pk"), pv = pb.getAttribute("data-pv");
@@ -756,6 +768,7 @@
       lockIfDone(cid); updateRoom(cid); queueSave(); schedulePush(cid); refreshTotals();
     }
   });
+  listEl.addEventListener("change", function (e) { if (e.target.matches && e.target.matches(".flagsel")) { var id = e.target.getAttribute("data-r"); roomState(id).flag = e.target.value; e.target.className = "flagsel fg-" + (flagGrp(e.target.value) || "none"); queueSave(); schedulePush(id); } });
   listEl.addEventListener("focusin", function (e) { if (e.target.matches && e.target.matches("input[data-tvname], input[data-extra], textarea[data-comment]")) editingRoom = e.target.getAttribute("data-r") || e.target.getAttribute("data-comment"); });
   listEl.addEventListener("focusout", function (e) { if (e.target.matches && e.target.matches("input[data-tvname], textarea[data-comment]")) { editingRoom = null; applyFilter(); } });
 
@@ -767,6 +780,7 @@
   function updateRoom(id) {
     var el = roomEls[id], s = roomState(id), g = guestName(id), locked = s.guestLocked != null;
     if (el.fwchip) el.fwchip.hidden = !data.fw[id];
+    if (el.sel) { var _f = roomFlag(id); el.sel.value = _f; el.sel.className = "flagsel fg-" + (flagGrp(_f) || "none"); }
     if (el.lbl) el.lbl.textContent = locked ? "Verified" : "Guest";
     if (g) { el.name.textContent = g; el.name.classList.remove("empty"); }
     else { el.name.textContent = "no name loaded"; el.name.classList.add("empty"); }
@@ -1049,6 +1063,8 @@
       cols.push({ h: "Issues", v: function (id) { return issueText(id); } });
       cols.push({ h: "Status", v: function (id) { return roomDone(id) ? (issuesOf(id).length ? "Complete — issues" : "Complete") : "Incomplete"; } });
       cols.push({ h: "Completed (Vegas time)", v: function (id, s) { return s.doneAt ? new Date(s.doneAt).toLocaleString("en-US", { timeZone: "America/Los_Angeles", timeZoneName: "short" }) : ""; } });
+      cols.push({ h: "Relabel flag", v: function (id) { return FLAGLABEL[roomFlag(id)] || ""; } });
+      cols.push({ h: "Completed by (device)", v: function (id, s) { return s.doneBy || ""; } });
       var headers = cols.map(function (c) { return c.h; });
       var rows = [], redMap = new Map();
       ROOMS.forEach(function (id, ri) {
